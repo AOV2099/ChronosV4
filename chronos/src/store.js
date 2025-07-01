@@ -1,8 +1,9 @@
- import { LayoutDashboard, CalendarSearch, GraduationCap, BookA, ClipboardPlus, BookOpen, Bolt, FileSearch, LogOut } from "lucide-svelte";
+ import { env } from "$env/dynamic/private";
+import { LayoutDashboard, CalendarSearch, GraduationCap, BookA, ClipboardPlus, BookOpen, Bolt, FileSearch, LogOut } from "lucide-svelte";
 import { writable } from "svelte/store";
 
 
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000/api";
+export const API_BASE_URL = process.env.API_BASE_URL || "http://localhost:3000/api";
 export const HORARIO_URL = `${API_BASE_URL}/cargar-horario`;
 export const ASIGNATURAS_URL = `${API_BASE_URL}/cargar-asignaturas`;
 export const PROFESORES_URL = `${API_BASE_URL}/cargar-profesores`;
