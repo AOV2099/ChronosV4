@@ -16,3 +16,16 @@ services:
     container_name: chronos_backend
     ports:
       - "3000:3000"
+    environment:
+      - REDIS_URL=redis://:perritoen4@redis-stack:6379
+    depends_on:
+      - redis-stack
+
+  redis-stack:
+    image: redis/redis-stack:latest
+    container_name: redis-stack
+    ports:
+      - "6379:6379"
+      - "8001:8001"
+    environment:
+      - REDIS_ARGS=--requirepass perritoen4
