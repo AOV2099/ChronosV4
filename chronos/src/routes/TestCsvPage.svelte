@@ -168,7 +168,7 @@
 	<hr />
 	<div class="flex justify-between items-center">
 		<div class="text-2xl font-semibold mb-4 mt-4">
-			CARGA DE ARCHIVO CSV DE PROPUESTAS - PÁGINA DE PRUEBA
+			CARGA DE ARCHIVO CSV DE PROPUESTAS  
 		</div>
 
 		<div>
