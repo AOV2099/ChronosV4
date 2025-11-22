@@ -21,7 +21,7 @@
 		"@tailwindcss/postcss": "^4.1.11",
 		"@tailwindcss/typography": "^0.5.16",
 		"autoprefixer": "^10.4.21",
-		"bits-ui": "^2.8.10",
+		"bits-ui": "^2.14.4",
 		"clsx": "^2.1.1",
 		"cmdk-sv": "^0.0.18",
 		"embla-carousel-svelte": "^8.5.2",

@@ -16,14 +16,21 @@
 		FileUp,
 		Upload,
 		CloudUpload,
-		Download
+		Download,
+		Rows
 	} from 'lucide-svelte';
-	import { selectedSidebarItem, SIDEBAR_ITEMS } from '@/store';
+	import {
+		PROPUESTA_INDIVIDUAL_URL,
+		PROPUESTAS_GLOBAL_URL,
+		selectedSidebarItem,
+		SIDEBAR_ITEMS
+	} from '@/store';
 	import { toast } from 'svelte-sonner';
 
 	export let data = [];
 	export let columns = {};
 	export let perPage = 20;
+	export let docKind;
 
 	let currentPage = 1;
 	let searchQuery = '';
@@ -94,16 +101,68 @@
 	}
 
 	function downloadProposalPDF(row) {
-        toast.success(`Iniciando descarga... (POR IMPLEMENTAR)`);
-		const url = `/pdfs/propuesta-test.pdf`;
-		const link = document.createElement('a');
-		link.href = url;
-		link.download = `propuesta-test.pdf`;
-		document.body.appendChild(link);
-		link.click();
-		document.body.removeChild(link);
-
+		const url = `${PROPUESTA_INDIVIDUAL_URL}?worker=${encodeURIComponent(row.numTrabajador)}`;
+		window.open(url, '_blank', 'noopener,noreferrer');
 	}
+
+function pickCSV() {
+  // Abrir explorador de archivos
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.csv';
+  input.onchange = async (e) => {
+    const file = e.target.files?.[0];
+    if (file) await openAllProposalsFromCSV(file);
+  };
+  input.click();
+}
+
+async function openAllProposalsFromCSV(file) {
+  try {
+    // 1) leer CSV como texto
+    const csvText = await file.text();
+
+    // 2) POST como JSON { csv: "..." } a la API que genera el PDF multi-página
+    const res = await fetch(PROPUESTAS_GLOBAL_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      body: JSON.stringify({ csv: csvText })
+    });
+
+    if (!res.ok) {
+      const msg = await safeText(res);
+      throw new Error(`API respondió ${res.status}: ${msg || 'error desconocido'}`);
+    }
+
+    // 3) Descargar el PDF (sin abrir nueva pestaña)
+    const blob = await res.blob(); // application/pdf
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    // nombre sugerido a partir del CSV seleccionado
+    const baseName = file.name.replace(/\.csv$/i, '') || 'propuestas';
+    a.href = url;
+    a.download = `${baseName}-propuestas.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    // liberar el objeto URL
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    toast.success('Propuestas descargadas');
+  } catch (err) {
+    console.error('❌ Error descargando propuestas desde CSV:', err);
+    toast.error(`Error: ${err.message}`);
+  }
+}
+
+async function safeText(res) {
+  try {
+    return await res.text();
+  } catch {
+    return '';
+  }
+}
+
+
 </script>
 
 <div class="space-y-4">
@@ -145,6 +204,10 @@
 
 			<Button class="ml-2" onclick={downloadCsvData}>
 				<Sheet class="w-4 h-4" /> Descargar
+			</Button>
+
+			<Button class="ml-2" onclick={pickCSV}>
+				<Rows class="w-4 h-4" /> Propuestas
 			</Button>
 		</div>
 	</div>
@@ -222,8 +285,7 @@
 					{#if $selectedSidebarItem === SIDEBAR_ITEMS.HORARIOS}
 						<Table.Cell colspan={Object.keys(columns).length + 1}>
 							<Button
-								variant="secondary"
-								class="w-12 h-auto cursor-pointer text-sm px-2 py-1"
+								class=" h-auto cursor-pointer text-sm px-2 py-1"
 								onclick={() => downloadProposalPDF(row)}
 							>
 								<Download class="w-4 h-4" />
