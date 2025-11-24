@@ -4,6 +4,7 @@ import { getRedisClient } from "../redisClient.js";
 import PDFDocument from "pdfkit";
 import path from "path";
 import archiver from "archiver";
+import { get } from "http";
 
 const router = express.Router();
 
@@ -40,6 +41,63 @@ const tryParse = (s) => {
     return s;
   }
 };
+
+function multiLineCell(doc, txt, x, y, w, h, opts = {}) {
+  const {
+    maxFont = 8,   // tamaño normal
+    minFont = 6,   // tamaño mínimo
+    font = "Helvetica",
+    color = C.text,
+    align = "center",
+  } = opts;
+
+  const text = String(txt ?? "");
+
+  // Probar con fuente desde maxFont hacia abajo
+  let chosenSize = maxFont;
+  let textHeight = 0;
+
+  for (let size = maxFont; size >= minFont; size--) {
+    doc.font(font).fontSize(size);
+    const hStr = doc.heightOfString(text, {
+      width: w - 6,
+      align,
+    });
+
+    // Deja un pequeño margen dentro de la celda
+    if (hStr <= h - 4) {
+      chosenSize = size;
+      textHeight = hStr;
+      break;
+    }
+
+    // Si nunca cabe, nos quedamos con el más pequeño
+    if (size === minFont) {
+      chosenSize = size;
+      textHeight = hStr;
+    }
+  }
+
+  const ty = y + (h - textHeight) / 2; // centrar verticalmente
+
+  doc
+    .font(font)
+    .fontSize(chosenSize)
+    .fillColor(color)
+    .text(text, x + 3, ty, {
+      width: w - 6,
+      align,
+    });
+}
+
+
+// 🔹 nueva: normaliza la clave a 4 dígitos con ceros a la izquierda
+function normalizeCve(value) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+  if (raw.length >= 4) return raw;
+  return raw.padStart(4, "0");
+}
 
 async function readJsonArray(client, key) {
   // 1) Intentar como string JSON directo
@@ -123,7 +181,7 @@ function mostFrequentNonEmpty(values = []) {
   return best || "";
 }
 
-// Mapear una fila de horario -> row PDF
+// Mapear una fila de horario -> row PDF (Redis)
 function horarioToRow(h) {
   const iD = pad2(h.diaIni);
   const iM = pad2(h.mesIni);
@@ -148,7 +206,8 @@ function horarioToRow(h) {
     tM,
     tA,
     plan: String(h.planEstudios ?? ""),
-    cve: String(h.cveAsignatura ?? ""),
+    // 🔹 ahora soporta cveAsignatura o claveAsignatura y rellena a 4 dígitos
+    cve: normalizeCve(h.cveAsignatura ?? h.claveAsignatura),
     asig: (h.nombreAsignatura ?? "").toString().trim(),
     grupo: String(h.grupo ?? ""),
     teo,
@@ -438,20 +497,35 @@ function drawTable(doc, y, rows) {
     doc.save().rect(boxX, yData, boxW, hRow).fill("#F9FBFD").restore();
     cx = xStart;
     for (const c of baseCols) {
-      const align = "center";
       const valRaw = r[c.key] ?? "";
-      const val =
-        c.key === "asig" || c.key === "hor"
-          ? textClamp(doc, valRaw, c.w - 6, "Helvetica", sizeBody)
-          : String(valRaw);
-      cellText(doc, val, cx, yData, c.w, hRow, {
-        size: sizeBody,
-        align,
-        valign: "middle",
-      });
+
+      if (c.key === "cat" || c.key === "asig") {
+        // 👉 Categoría y Nombre Asignatura / Actividad: multilínea auto
+        multiLineCell(doc, valRaw, cx, yData, c.w, hRow, {
+          maxFont: sizeBody,
+          minFont: 6,
+          align: "center",
+        });
+      } else {
+        // Resto de columnas igual que antes
+        const align = "center";
+        const val =
+          c.key === "hor"
+            ? textClamp(doc, valRaw, c.w - 6, "Helvetica", sizeBody)
+            : String(valRaw);
+
+        cellText(doc, val, cx, yData, c.w, hRow, {
+          size: sizeBody,
+          align,
+          valign: "middle",
+        });
+      }
+
+      // Bordes verticales
       line(doc, cx, yData, cx, yData + hRow, C.line, 0.6);
       cx += c.w;
     }
+
     line(doc, boxX + boxW, yData, boxX + boxW, yData + hRow, C.line, 0.6);
     line(doc, boxX, yData + hRow, boxX + boxW, yData + hRow, C.line, 0.6);
     yData += hRow;
@@ -499,28 +573,34 @@ function drawObservaciones(doc, y, texto = "") {
 }
 function drawFooter(
   doc,
-  info = {
-    fecha: "Nezahualcóyotl, Estado de México, a 23 de Noviembre del 2023",
-    interesado: "",
-    jefe: "ING. JORGE ARTURO LOPEZ HERNANDEZ",
-  }
+  info = {}
 ) {
-  const FOOTER = { base: 100, dateDy: -6, lemaDy: 14, signGap: 64 };
+  const FOOTER = { base: 100, dateDy: -24, lemaDy: -11, signGap: 64 };
   const bottom = PAGE.h - MARGIN - FOOTER.base;
+
+  const fechaDefault = `Nezahualcóyotl, Estado de México, a ${getDateString()}`;
+  const {
+    fecha = fechaDefault,
+    interesado = "",
+    jefe = "ING. JORGE ARTURO LOPEZ HERNANDEZ",
+  } = info || {};
+
   doc
     .font("Helvetica")
     .fontSize(F.small)
     .fillColor(C.text)
-    .text(info.fecha, MARGIN, bottom + FOOTER.dateDy, {
+    .text(fecha, MARGIN, bottom + FOOTER.dateDy, {
       width: INNER_W,
       align: "center",
     });
+
   doc
     .font("Helvetica-Bold")
     .text("“POR MI RAZA HABLARÁ EL ESPÍRITU”", MARGIN, bottom + FOOTER.lemaDy, {
       width: INNER_W,
       align: "center",
     });
+
   const y = bottom + FOOTER.signGap;
   const colW = INNER_W / 3;
   const mk = (i, label, name) => {
@@ -535,10 +615,11 @@ function drawFooter(
       .fontSize(F.small)
       .text(name, x, y + 26, { width: colW, align: "center" });
   };
-  mk(0, "CONFORMIDAD INTERESADO(A)", info.interesado || "");
-  mk(1, "JEFE DE CARRERA", info.jefe || "ING. JORGE ARTURO LOPEZ HERNANDEZ");
-  mk(2, "SELLO Y FIRMA DE RECIBIDO", "DEPTO. DE RECURSOS HUMANOS");
+  mk(0, "CONFORMIDAD INTERESADO(A)", interesado || "");
+  mk(1, "JEFE DE CARRERA", jefe || "NO DEFINIDOXS");
+  mk(2, "SELLO Y FIRMA DE RECIBIDO", "DEPTO. DE PERSONAL");
 }
+
 
 function drawOneProposalPage(
   doc,
@@ -551,7 +632,7 @@ function drawOneProposalPage(
   drawFooter(doc, { fecha, interesado, jefe });
 }
 
-/* ============== Agrupación por carrera (Redis) – NUEVO helper común ============== */
+/* ============== Agrupación por carrera (Redis) – helper común ============== */
 function groupRowsByCarreraFromRedis({ profByWorker, horByWorker }) {
   // 1) Carreras presentes
   const carrerasProf = profByWorker
@@ -616,7 +697,8 @@ function groupRowsByCarreraFromRedis({ profByWorker, horByWorker }) {
         tM: pad2(p.mesFin),
         tA: pad2(p.anoFin),
         plan: String(p.planEstudios ?? ""),
-        cve: String(p.cveAsignatura ?? ""),
+        // 🔹 también normalizamos CVE en este caso
+        cve: normalizeCve(p.cveAsignatura ?? p.claveAsignatura),
         asig: (p.nombreAsignatura ?? "") + "",
         grupo: String(p.grupo ?? ""),
         teo,
@@ -736,7 +818,7 @@ router.get("/propuesta", async (req, res) => {
       y = drawTable(doc, y + 18, pg.rows);
       y = drawObservaciones(doc, y, pg.observaciones);
       drawFooter(doc, {
-        fecha: "Nezahualcóyotl, Estado de México, a 23 de Noviembre del 2023",
+        //fecha: "Nezahualcóyotl, Estado de México, a 23 de Noviembre del 2023",
         interesado,
         jefe: pg.jefe,
       });
@@ -823,7 +905,7 @@ router.get("/propuestas-all", async (req, res) => {
         y = drawTable(doc, y + 18, pg.rows);
         y = drawObservaciones(doc, y, pg.observaciones);
         drawFooter(doc, {
-          fecha: "Nezahualcóyotl, Estado de México, a 23 de Noviembre del 2023",
+          //fecha: "Nezahualcóyotl, Estado de México, a 23 de Noviembre del 2023",
           interesado,
           jefe: pg.jefe,
         });
@@ -990,6 +1072,14 @@ function rowsFromCSV(csvText) {
 
       salon: "salon",
       aula: "salon",
+
+      // 🔹 alias cortos tipo encabezados de la tabla (iD/iM/iA/tD/tM/tA)
+      id: "diaIni",
+      im: "mesIni",
+      ia: "anoIni",
+      td: "diaFin",
+      tm: "mesFin",
+      ta: "anoFin",
     })
   );
 
@@ -1013,7 +1103,18 @@ function rowsFromCSV(csvText) {
   return out;
 }
 
-// Devuelve la fila formateada para la tabla, tolerando columnas alias
+function getDateString(){
+    //fecha en formato 23 de Noviembre del 2023
+    //numero de dia 2 digitos, mes en letras y anio 4 digitos
+    const fecha = new Date();
+    const dia = String(fecha.getDate()).padStart(2, '0');
+    const mes = fecha.toLocaleString('es-ES', { month: 'long' });
+    const anio = fecha.getFullYear();
+    return `${dia} de ${mes.charAt(0).toUpperCase() + mes.slice(1)} del ${anio}`;
+
+}
+
+// Devuelve la fila formateada para la tabla, tolerando columnas alias (CSV)
 function rowCsvToHorarioRow(csvRow) {
   const first = (...keys) => {
     for (const k of keys) {
@@ -1043,9 +1144,10 @@ function rowCsvToHorarioRow(csvRow) {
   const tA = pad2(first("anoFin", "anioFin", "ano_fin", "anofin"));
 
   const plan = String(first("planEstudios", "plan_estudios", "plan") || "");
-  const cve = String(
-    first("cveAsignatura", "cve_asignatura", "clave", "cve") || ""
-  );
+
+  // 🔹 CVE desde CSV: se normaliza a 4 dígitos
+  const cveRaw = first("cveAsignatura", "cve_asignatura", "clave", "cve");
+  const cve = normalizeCve(cveRaw);
 
   const asig = first(
     "nombreAsignatura",
@@ -1170,10 +1272,10 @@ function buildWorkerPdfFileName(interesado, worker) {
   return `${profName} - ${workerId || "sin-numero"}.pdf`;
 }
 
+// Ejemplo de CSV para descargar desde el front
 router.get("/example-csv", (req, res) => {
-  //descargar ejemplo de CSV
   const EXAMPLE_CSV_ROUTE = "./src/assets/examples/example.csv";
-    res.download(path.resolve(process.cwd(), EXAMPLE_CSV_ROUTE));
+  res.download(path.resolve(process.cwd(), EXAMPLE_CSV_ROUTE));
 });
 
 router.post("/propuestas-from-csv", async (req, res) => {
@@ -1327,7 +1429,5 @@ router.post("/propuestas-from-csv", async (req, res) => {
     res.end();
   }
 });
-
-
 
 export default router;
