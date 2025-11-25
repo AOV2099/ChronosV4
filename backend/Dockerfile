@@ -2,13 +2,14 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Copiamos package.json / package-lock.json si existe
+# Copiamos package.json / package-lock.json (si existe)
 COPY package*.json ./
 
-# Instalar dependencias (simple y confiable)
+# Instalar dependencias del backend
+# (archiver, express, pdfkit, redis, etc. son puros JS)
 RUN npm install
 
-# Copiamos el resto del backend
+# Copiamos el resto del código del backend
 COPY . .
 
 ENV NODE_ENV=production
