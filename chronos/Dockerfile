@@ -8,8 +8,8 @@ WORKDIR /app
 # Copiamos solo package.json/package-lock para aprovechar caché
 COPY package*.json ./
 
-# Instalar dependencias (usa npm ci si tienes package-lock.json)
-RUN npm ci
+# Instalar dependencias 
+RUN npm install
 
 # Copiamos el resto del código del frontend
 COPY . .
