@@ -1,18 +1,10 @@
 version: "3.9"
 
 services:
-  frontend:
-    build:
-      context: ./chronos
-    container_name: chronos_front
-    ports:
-      - "8080:80"
-    depends_on:
-      - backend
-
   backend:
     build:
-      context: ./backend
+      context: .          # raíz del repo
+      dockerfile: Dockerfile
     container_name: chronos_backend
     ports:
       - "3000:3000"
