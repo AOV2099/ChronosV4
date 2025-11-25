@@ -1,17 +1,21 @@
-FROM node:20-alpine    
+FROM node:20-alpine
 
 WORKDIR /app
 
-# Copiamos solo package.json primero para aprovechar caché
+# Copiamos package.json / package-lock.json
 COPY package*.json ./
 
-RUN npm install
+# Instalar dependencias (en prod, mejor sin devDependencies si las tienes separadas)
+RUN npm ci --omit=dev
 
-# Ahora sí, copiamos el resto
+# Copiamos el resto del backend
 COPY . .
 
-# Expón el puerto del backend
+# Variable de entorno
+ENV NODE_ENV=production
+
+# Puerto del backend
 EXPOSE 3000
 
-# Comando para iniciar el servidor
+# Comando de inicio
 CMD ["node", "server.js"]
