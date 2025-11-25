@@ -5,19 +5,16 @@ WORKDIR /app
 # Copiamos package.json / package-lock.json si existe
 COPY package*.json ./
 
-# Instalar dependencias
-# Para evitar broncas con npm ci, usamos npm install
-# Si quieres sólo prod puedes usar --omit=dev (Node 20 lo soporta)
+# Instalar dependencias (simple y confiable)
 RUN npm install
-
-# Si te diera lata el --omit=dev, cámbialo a: 
-# RUN npm install
 
 # Copiamos el resto del backend
 COPY . .
 
 ENV NODE_ENV=production
 
+# Puerto del backend
 EXPOSE 3000
 
+# Comando de inicio
 CMD ["node", "server.js"]
