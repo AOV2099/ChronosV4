@@ -8,7 +8,7 @@ COPY package*.json ./
 # Instalar dependencias
 # Para evitar broncas con npm ci, usamos npm install
 # Si quieres sólo prod puedes usar --omit=dev (Node 20 lo soporta)
-RUN npm install --omit=dev
+RUN npm install
 
 # Si te diera lata el --omit=dev, cámbialo a: 
 # RUN npm install
